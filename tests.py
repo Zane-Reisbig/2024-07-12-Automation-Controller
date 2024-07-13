@@ -31,10 +31,12 @@ print(bar)
 print()
 countDown()
 
+#
 # Quick Switching Windows
-currentWindow = getForegroundWindowAsObject()
+#
 
-# Starting Window
+# Get starting window so we can end on that one
+currentWindow = getForegroundWindowAsObject()
 print(currentWindow)
 print()
 countDown()
