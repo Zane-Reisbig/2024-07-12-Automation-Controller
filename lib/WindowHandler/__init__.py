@@ -1,4 +1,13 @@
-from win32con import PROCESS_QUERY_INFORMATION, PROCESS_VM_READ
+from win32con import (
+    PROCESS_QUERY_INFORMATION,
+    PROCESS_VM_READ,
+    SW_MINIMIZE,
+    SW_MAXIMIZE,
+)
+
+HANDLE_ERROR_DESTRUCTIVE = 0
+HANDLE_ERROR_STD_OUTPUT = 1
+
 from typing import Callable
 from pywintypes import error as pywinError
 
@@ -66,12 +75,7 @@ class Window:
         #   I'll let you know where the door is.
         #
         # Whoever decided they are different things is not welcome here
-        self.exePath = GetModuleFileNameEx(
-            OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, self.processID
-            ),
-            0,
-        )
+        self.exePath = GetModuleFileNameEx(self.getHandle(), 0)
 
         if self.windowTitle:
             return
@@ -90,8 +94,8 @@ class Window:
 
         try:
             # By min and max-ing we make sure it truly is on the foreground
-            ShowWindow(self.hwnd, 6)  # 6 minimize
-            ShowWindow(self.hwnd, 3)  # 3 maximize
+            ShowWindow(self.hwnd, SW_MINIMIZE)  # 6 minimize
+            ShowWindow(self.hwnd, SW_MAXIMIZE)  # 3 maximize
             SetForegroundWindow(self.hwnd)
         except pywinError as e:
             # handle the failed to set foreground error
@@ -109,14 +113,24 @@ class Window:
 
         return False
 
+    def getHandle(self):
+        try:
+            return OpenProcess(
+                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, self.processID
+            )
+        except pywinError as e:
+            __pywinIsError__(e, OpenProcess)
+
+        return False
+
 
 def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int = 0):
 
     # Get the Literal Name of the callable and see if that's our error
     if _pywinError.funcname != function.__name__:
-        if behavior == 0:
+        if behavior == HANDLE_ERROR_DESTRUCTIVE:
             raise _pywinError
-        elif behavior == 1:
+        elif behavior == HANDLE_ERROR_STD_OUTPUT:
             # A little non-destructive mode too
             print(_pywinError)
 
@@ -127,12 +141,12 @@ def getForegroundWindowAsObject():
     return getWindowAsObject(GetForegroundWindow())
 
 
-def getWindowAsObject(hwnd: int, **kwargs):
+def getWindowAsObject(hwnd: int, windowText: str = None):
     # GetWindowThreadProcessId returns the threadID and the processID
     #   so we just destructure it
-    return Window(hwnd, *GetWindowThreadProcessId(hwnd), kwargs.get("windowText"))
+    return Window(hwnd, *GetWindowThreadProcessId(hwnd), windowText)
     #                                                    ^
-    #                                            if there is no windowText oh well
+    #                                          if there is no windowText, oh well
 
 
 def searchForWindowsByTitle(
@@ -206,12 +220,12 @@ def tryAttachThread(thisThread: int, willBeAttachedToThisThread: int):
     assert type(willBeAttachedToThisThread) == int , f"{willBeAttachedToThisThread} is not type 'int'"
     # fmt: on
 
-    # If the thread is already the same it will throw and Exception
+    # If the thread is already the same it will throw an Exception
     if thisThread == willBeAttachedToThisThread:
         return True
 
     try:
-        # No harm in handling it anyway, there is a change the window will be
+        # No harm in handling it anyway, there is a chance the window will be
         #   raised anyway, but that's on you if it fails
         AttachThreadInput(thisThread, willBeAttachedToThisThread, True)
 
