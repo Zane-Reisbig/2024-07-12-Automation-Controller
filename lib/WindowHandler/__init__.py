@@ -12,7 +12,7 @@ from typing import Callable
 from pywintypes import error as pywinError
 
 from dataclasses import dataclass, field
-from win32api import OpenProcess
+from win32api import OpenProcess, CloseHandle
 from win32gui import (
     GetWindowText,
     GetForegroundWindow,
@@ -69,13 +69,29 @@ class Window:
     windowTitle: str = field(default_factory=str)
     exePath: str = field(default_factory=str)
 
+    class HandleManager:
+        def __init__(self, windowObject) -> None:
+            self.windowObject = windowObject
+
+        def __enter__(self):
+            return OpenProcess(
+                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                False,
+                self.windowObject.processID,
+            )
+
+        def __exit__(self):
+            CloseHandle(self.windowObject)
+
     def __post_init__(self):
 
         # Show me the difference between an HWND and and HANDLE and
         #   I'll let you know where the door is.
         #
         # Whoever decided they are different things is not welcome here
-        self.exePath = GetModuleFileNameEx(self.getHandle(), 0)
+        _handle = self.getHandle()
+        self.exePath = GetModuleFileNameEx(_handle, 0)
+        CloseHandle(_handle)
 
         if self.windowTitle:
             return
@@ -114,10 +130,17 @@ class Window:
         return False
 
     def getHandle(self):
+        """
+        Returns a handle in a context manager for disposing
+
+        ex: with window.getHandle() as handle:
+                doUrStuffWith(handle)
+
+        Disposes when outside of block
+        """
+
         try:
-            return OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, self.processID
-            )
+            return self.HandleManager(self)
         except pywinError as e:
             __pywinIsError__(e, OpenProcess)
 
@@ -125,7 +148,6 @@ class Window:
 
 
 def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int = 0):
-
     # Get the Literal Name of the callable and see if that's our error
     if _pywinError.funcname != function.__name__:
         if behavior == HANDLE_ERROR_DESTRUCTIVE:
