@@ -1,1 +1,5 @@
 /.venv
+*/__pycache__
+*/*/__pycache__
+*/*/*/__pycache__
+# This can't possibly be the best way lol
