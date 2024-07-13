@@ -45,7 +45,6 @@ if not foo.tryActivate():
     raise Exception("So far so bad.")
 
 print(f"{foo.windowTitle[:-min(len(foo.windowTitle), 10)]} is foreground", end="")
-print(foo.windowTitle)
 print(foo.isForeground())
 print()
 countDown(3)
