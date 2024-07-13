@@ -216,7 +216,7 @@ def tryAttachThread(thisThread: int, willBeAttachedToThisThread: int):
         AttachThreadInput(thisThread, willBeAttachedToThisThread, True)
 
     except pywinError as e:
-        __pywinIsError__(e, AttachThreadInput, behavior=1)
+        __pywinIsError__(e, AttachThreadInput)
         return False
 
     return True
