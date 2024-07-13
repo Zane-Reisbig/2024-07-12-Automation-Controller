@@ -1,7 +1,5 @@
-import time
-
 from win32con import PROCESS_QUERY_INFORMATION, PROCESS_VM_READ
-from typing import Callable, Literal
+from typing import Callable
 from pywintypes import error as pywinError
 
 from dataclasses import dataclass, field
