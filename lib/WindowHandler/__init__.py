@@ -72,16 +72,19 @@ class Window:
     class HandleManager:
         def __init__(self, windowObject) -> None:
             self.windowObject = windowObject
+            self.handle = None
 
         def __enter__(self):
-            return OpenProcess(
+            self.handle = OpenProcess(
                 PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
                 False,
                 self.windowObject.processID,
             )
 
-        def __exit__(self):
-            CloseHandle(self.windowObject)
+            return self.handle
+
+        def __exit__(self, *args):
+            CloseHandle(self.handle)
 
     def __post_init__(self):
 
@@ -89,9 +92,9 @@ class Window:
         #   I'll let you know where the door is.
         #
         # Whoever decided they are different things is not welcome here
-        _handle = self.getHandle()
-        self.exePath = GetModuleFileNameEx(_handle, 0)
-        CloseHandle(_handle)
+        with self.getHandle() as _handle:
+            self.exePath = GetModuleFileNameEx(_handle, 0)
+            CloseHandle(_handle)
 
         if self.windowTitle:
             return
@@ -103,15 +106,17 @@ class Window:
         if self.windowTitle == "":
             self.windowTitle = EmptyString
 
-    def tryActivate(self, tryThreadAttach=True) -> bool:
+    def tryActivate(self, tryThreadAttach=True, withMinimize: bool = True) -> bool:
         foreGroundWindow = getForegroundWindowAsObject()
         if tryThreadAttach:
             tryAttachThread(foreGroundWindow.threadID, self.threadID)
 
         try:
             # By min and max-ing we make sure it truly is on the foreground
-            ShowWindow(self.hwnd, SW_MINIMIZE)  # 6 minimize
-            ShowWindow(self.hwnd, SW_MAXIMIZE)  # 3 maximize
+            if withMinimize:
+                ShowWindow(self.hwnd, SW_MINIMIZE)  # 6 minimize
+                ShowWindow(self.hwnd, SW_MAXIMIZE)  # 3 maximize
+
             SetForegroundWindow(self.hwnd)
         except pywinError as e:
             # handle the failed to set foreground error
