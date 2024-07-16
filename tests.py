@@ -1,135 +1,70 @@
+import os
 import time
+import unittest
+
+from threading import Thread
+from tkinter.messagebox import showinfo
+from lib.WindowHandler import getForegroundWindowAsObject, searchForWindowByTitle
 
 
-def canGetWindowsTest():
-    from lib.WindowHandler import (
-        searchForWindowByTitle,
-        searchForWindowsByTitle,
-        getForegroundWindowAsObject,
-    )
+class Test_WindowHandlers(unittest.TestCase):
 
-    print(" " * 100, end="")
-    print()
+    def createAndGetWindowRef(self, title: str, message: str = None):
+        def showMessageBox(title: str, content: str = None):
+            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
+            time.sleep(0.3)
+            return title
 
-    def countDown(_from=5):
-        for i in range(_from, 0, -1):
-            print(i, end="...")
-            time.sleep(1)
+        return searchForWindowByTitle(showMessageBox(title, message))
 
-        print("GO!")
+    def test_canCloseWindow(self):
+        windowTitle = "Test Window"
+        windowRef = self.createAndGetWindowRef(windowTitle)
 
-    # This is a single window search
-    foo = searchForWindowByTitle("Discord")
-    print(foo)
-    print()
-    countDown()
-
-    # This is a multi-window search
-    bar = searchForWindowsByTitle("Firefox", ignore=["Youtube", "YouTube", "Twitch"])
-    # bar = searchForWindowsByTitle("Chrome", ignore=["Youtube", "YouTube", "Twitch"])
-    print(bar)
-    print()
-    countDown()
-
-    #
-    # Quick Switching Windows
-    #
-
-    # Get starting window so we can end on that one
-    currentWindow = getForegroundWindowAsObject()
-    print(currentWindow)
-    print()
-    countDown()
-
-    if not foo.tryActivate():
-        raise Exception("So far so bad.")
-
-    print(f"{foo.windowTitle[:-min(len(foo.windowTitle), 10)]} is foreground", end="")
-    print(foo.isForeground())
-    print()
-    countDown(3)
-
-    for i in bar:
-        if not i.tryActivate():
-            raise Exception("This is not chilling.")
-
-        print(
-            f"{i.windowTitle[0:-min(len(i.windowTitle), 10)]} is foreground: ", end=""
+        self.assertIsNotNone(windowRef)
+        self.assertEqual(
+            windowTitle,
+            windowRef.windowTitle,
+            f"\t- {windowTitle} != {windowRef.windowTitle}\n",
         )
-        print(i.isForeground())
-        print()
-        countDown(2)
 
-    if not currentWindow.tryActivate():
-        raise Exception("How did we fail from the calling thread 🙀")
+        windowRef.tryDestroy()
 
+        windowRef = searchForWindowByTitle(windowTitle)
+        self.assertIsNone(windowRef)
 
-def actionableWindowTest():
-    from lib.ControllableWindow.BaseWindow import BaseActionableWindow
-    from tkinter.messagebox import showinfo
-    from threading import Thread
+    def test_canGetWindowReference(self):
+        windowTitle = "Get this Window Ref"
+        windowRef = self.createAndGetWindowRef(windowTitle)
 
-    from keyboard import send
+        self.assertIsNotNone(windowRef)
+        self.assertEqual(
+            windowTitle,
+            windowRef.windowTitle,
+            f"\t- {windowTitle} != {windowRef.windowTitle}\n",
+        )
 
-    class OpenClaimWindowNoImp(BaseActionableWindow):
-        def __init__(self):
-            super().__init__("Open")
+        windowRef.tryDestroy()
 
-        def open(self):
-            super().open()
+    def test_canSwitchWindow(self):
+        firstWindowTitle = "First"
+        firstWindow = self.createAndGetWindowRef(firstWindowTitle)
 
-        # def close(self):
-        #     super().close()
+        secondWindowTitle = "Second"
+        secondWindow = self.createAndGetWindowRef(secondWindowTitle)
 
-        # def isOpen(self):
-        #     super().isOpen()
+        firstWindow.tryActivate(withMinimize=False)
+        self.assertEqual(getForegroundWindowAsObject().windowTitle, firstWindowTitle)
 
-    class OpenWindowWithImp(BaseActionableWindow):
-        def __init__(self):
-            super().__init__("Open")
+        secondWindow.tryActivate(withMinimize=False)
+        self.assertEqual(getForegroundWindowAsObject().windowTitle, secondWindowTitle)
 
-        def open(self):
-            x = Thread(target=lambda: showinfo("Open", "This is a popup"))
-            x.start()
-            time.sleep(1)
+        firstWindow.tryDestroy()
+        secondWindow.tryDestroy()
 
-        def close(self):
-            isWindowOpen = super().isOpen()
-            if not isWindowOpen:
-                return True
-
-            if not isWindowOpen.tryActivate(withMinimize=False):
-                return False
-
-            send("esc")
-            time.sleep(1)
-            return super().isOpen()
-
-    x = OpenClaimWindowNoImp()
-
-    try:
-        x.open()
-    except NotImplementedError:
-        print("Open Fail")
-
-    try:
-        x.close()
-    except NotImplementedError:
-        print("Close Fail")
-
-    y = OpenWindowWithImp()
-
-    print("trying to open")
-    y.open()
-    print("checking if open")
-    y.isOpen()
-    print("trying to close")
-    y.close()
-    print("is it open still?")
-    print(y.isOpen())
+        self.assertIsNone(searchForWindowByTitle(firstWindowTitle))
+        self.assertIsNone(searchForWindowByTitle(secondWindowTitle))
 
 
-print("\n\n")
-
-# canGetWindowsTest()
-actionableWindowTest()
+os.system("cls")
+unittest.main(verbosity=2)

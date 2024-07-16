@@ -3,6 +3,7 @@ from win32con import (
     PROCESS_VM_READ,
     SW_MINIMIZE,
     SW_MAXIMIZE,
+    WM_CLOSE,
 )
 
 HANDLE_ERROR_DESTRUCTIVE = 0
@@ -19,6 +20,7 @@ from win32gui import (
     EnumWindows,
     SetForegroundWindow,
     ShowWindow,
+    PostMessage,
 )
 from win32process import (
     GetWindowThreadProcessId,
@@ -150,6 +152,15 @@ class Window:
             __pywinIsError__(e, OpenProcess)
 
         return False
+
+    def tryDestroy(self):
+        try:
+            PostMessage(self.hwnd, WM_CLOSE)
+        except pywinError as e:
+            __pywinIsError__(e, PostMessage)
+            return False
+
+        return True
 
 
 def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int = 0):
