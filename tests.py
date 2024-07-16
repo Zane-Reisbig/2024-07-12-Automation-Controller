@@ -12,7 +12,7 @@ class Test_WindowHandlers(unittest.TestCase):
     def createAndGetWindowRef(self, title: str, message: str = None):
         def showMessageBox(title: str, content: str = None):
             Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(0.3)
+            time.sleep(0.4)
             return title
 
         return searchForWindowByTitle(showMessageBox(title, message))
@@ -67,4 +67,4 @@ class Test_WindowHandlers(unittest.TestCase):
 
 
 os.system("cls")
-unittest.main(verbosity=2)
+unittest.main(verbosity=1)
