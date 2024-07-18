@@ -9,13 +9,13 @@ from lib.WindowHandler.managers import (
     getForegroundWindowAsObject,
 )
 
-run_T_WindowHandlers = False
+run_T_WindowHandlers = True
 run_T_WindowMessage = True
 
 
 @unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
 class T_WindowHandlers(unittest.TestCase):
-    timeSleep = 3
+    timeSleep = 1
     timeWindowCreateDestroy = 0.4
 
     def createAndGetWindowRef(self, title: str, message: str = None):
@@ -92,11 +92,9 @@ class T_WindowHandlers(unittest.TestCase):
         self.assertIsNone(searchForWindowByTitle(secondWindowTitle))
 
 
-# fmt: off
-from win32con import WM_SETTEXT  # fmt: on
 @unittest.skipIf(not run_T_WindowMessage, "Not Testing")
 class T_WindowMessage(unittest.TestCase):
-    timeSleep = 3
+    timeSleep = 1
     timeWindowCreateDestroy = 0.4
 
     def createAndGetWindowRef(self, title: str, message: str = None):
@@ -108,13 +106,23 @@ class T_WindowMessage(unittest.TestCase):
         return searchForWindowByTitle(showMessageBox(title, message))
 
     def test_canSendWindowMessage(self):
+        # fmt: off
+        from win32con import WM_SETTEXT 
+        # fmt: on
+
+        # this case checks with the WM_SETTEXT and the getWindowTextFunction
         first = self.createAndGetWindowRef("Window!!", "This is a window!")
+        newText = "This is the new Window Text"
 
         first.sendWindowMessage(
             WM_SETTEXT,
-            lParam="This is the new Window Text",
-            tryWaitForMessageToProcess=False,
+            lParam=newText,
         )
+
+        first.tryActivate(withMinimize=False)
+
+        newWindow = searchForWindowByTitle(newText)
+        self.assertIsNotNone(newWindow)
 
 
 os.system("cls")

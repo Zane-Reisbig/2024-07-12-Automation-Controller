@@ -24,7 +24,7 @@ T = TypeVar("T")
 type WIN32_MESSAGE = int
 
 from dataclasses import dataclass, field
-from win32api import OpenProcess, CloseHandle
+from win32api import OpenProcess, CloseHandle, GetLastError, FormatMessage
 from win32gui import (
     GetWindowText,
     GetForegroundWindow,
@@ -169,13 +169,7 @@ class Window:
         return False
 
     def tryDestroy(self):
-        try:
-            PostMessage(self.hwnd, WM_CLOSE)
-        except pywinError as e:
-            __pywinIsError__(e, PostMessage)
-            return False
-
-        return True
+        return self.sendWindowMessage(WM_CLOSE, tryWaitForMessageToProcess=False)
 
     def sendWindowMessage(
         self,
@@ -186,33 +180,24 @@ class Window:
     ):
         isError = False
 
-        # try:
-        #     PostMessage(self.hwnd, message, wParam, lParam)
-        # except pywinError as e:
-        #     __pywinIsError__(e, PostMessage)
-        #     return False
-
         if tryWaitForMessageToProcess:
-
             try:
                 SendMessage(self.hwnd, message, wParam, lParam)
+
             except pywinError as e:
                 __pywinIsError__(e, SendMessage)
                 isError = True
+
             finally:
                 return isError
 
-        # PostMessage does not work in this context
-        # I have no idea why, the internet is no help
-        #  PostMessage(self.hwnd, message, wParam, lParam)
-        #  pywintypes.error: (1159, 'PostMessage', 'The message can be used only with synchronous operations.')
-        #
-        # So we have this instant timeout
         try:
-            SendMessageTimeout(self.hwnd, message, wParam, lParam, 0, 0)
+            PostMessage(self.hwnd, message, wParam, lParam)
+
         except pywinError as e:
-            __pywinIsError__(e, SendMessageTimeout)
+            __pywinIsError__(e, PostMessage)
             isError = True
+
         finally:
             return isError
 
@@ -225,8 +210,15 @@ def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int 
         elif behavior == HANDLE_ERROR_STD_OUTPUT:
             # A little non-destructive mode too
             print(_pywinError)
+        else:
+            raise NotImplementedError(f"Unknown option 'behavior={behavior}'")
 
     return
+
+
+def log_error(func_name, error_code):
+    x = f"Error in {func_name}: {error_code} - {FormatMessage(error_code)}"
+    print(x)
 
 
 def getForegroundWindowAsObject():
