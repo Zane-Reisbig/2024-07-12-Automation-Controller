@@ -1,16 +1,27 @@
+# fmt: off
 from win32con import (
+    # Security Options
     PROCESS_QUERY_INFORMATION,
     PROCESS_VM_READ,
+
+    # Process Options
+    PM_NOREMOVE,
+
+    # Window Messages
     SW_MINIMIZE,
     SW_MAXIMIZE,
     WM_CLOSE,
 )
+# fmt: on
 
-HANDLE_ERROR_DESTRUCTIVE = 0
-HANDLE_ERROR_STD_OUTPUT = 1
+HANDLE_ERROR_DESTRUCTIVE = 1
+HANDLE_ERROR_STD_OUTPUT = 2
 
-from typing import Callable
+from typing import Callable, Any, TypeVar
 from pywintypes import error as pywinError
+
+T = TypeVar("T")
+type WIN32_MESSAGE = int
 
 from dataclasses import dataclass, field
 from win32api import OpenProcess, CloseHandle
@@ -20,7 +31,10 @@ from win32gui import (
     EnumWindows,
     SetForegroundWindow,
     ShowWindow,
+    SendMessageTimeout,
+    SendMessage,
     PostMessage,
+    PeekMessage,
 )
 from win32process import (
     GetWindowThreadProcessId,
@@ -30,10 +44,11 @@ from win32process import (
 
 
 class State:
+
     def __init__(
         self,
         inital=None,
-        setHandler: Callable = None,
+        setHandler: Callable[[T, T], T] = None,
     ) -> None:
         """
         setHandler: function(curVal, prevVal) -> newValue
@@ -162,6 +177,45 @@ class Window:
 
         return True
 
+    def sendWindowMessage(
+        self,
+        message: WIN32_MESSAGE,
+        wParam: Any = None,
+        lParam: Any = None,
+        tryWaitForMessageToProcess: bool = True,
+    ):
+        isError = False
+
+        # try:
+        #     PostMessage(self.hwnd, message, wParam, lParam)
+        # except pywinError as e:
+        #     __pywinIsError__(e, PostMessage)
+        #     return False
+
+        if tryWaitForMessageToProcess:
+
+            try:
+                SendMessage(self.hwnd, message, wParam, lParam)
+            except pywinError as e:
+                __pywinIsError__(e, SendMessage)
+                isError = True
+            finally:
+                return isError
+
+        # PostMessage does not work in this context
+        # I have no idea why, the internet is no help
+        #  PostMessage(self.hwnd, message, wParam, lParam)
+        #  pywintypes.error: (1159, 'PostMessage', 'The message can be used only with synchronous operations.')
+        #
+        # So we have this instant timeout
+        try:
+            SendMessageTimeout(self.hwnd, message, wParam, lParam, 0, 0)
+        except pywinError as e:
+            __pywinIsError__(e, SendMessageTimeout)
+            isError = True
+        finally:
+            return isError
+
 
 def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int = 0):
     # Get the Literal Name of the callable and see if that's our error
@@ -185,71 +239,6 @@ def getWindowAsObject(hwnd: int, windowText: str = None):
     return Window(hwnd, *GetWindowThreadProcessId(hwnd), windowText)
     #                                                    ^
     #                                          if there is no windowText, oh well
-
-
-def searchForWindowsByTitle(
-    keyword: str, ignore: list | str = None, exact: bool = False
-) -> list[Window]:
-    # A working example of a list State
-    listState = State(list(), setHandler=lambda cur, passed: list([*cur, passed]))
-    #                                                                   ^
-    #              Destructure what we have now, append the new value, return the new list
-
-    return __EnumWindows__(
-        listState,
-        keyword,
-        ignore,
-        exact,
-    )
-
-
-def searchForWindowByTitle(
-    keyword: str, ignore: list | str = None, exact: bool = False
-) -> Window | None:
-    singleState = State()
-
-    return __EnumWindows__(singleState, keyword, ignore, exact, breakOnFirst=True)
-
-
-def __EnumWindows__(
-    accumulator: State,
-    keyword: str,
-    ignore: list | str = None,
-    exact: bool = False,
-    breakOnFirst: bool = False,
-) -> Window | list[Window]:
-
-    # If the window text contains __EMPTY_STRING__ something crazy is going on and thats on you
-    if not ignore:
-        ignore = EmptyString
-
-    if type(ignore) != list:
-        ignore = [
-            ignore,
-        ]
-
-    exactComp = lambda this, that: this == that  #
-    fuzzyComp = lambda this, that: this in that  # I was proud to come up with this
-    useComp: Callable = exactComp if exact else fuzzyComp  #
-
-    def enumProc(hwnd: int, accumulator: State):
-        # I like this too
-        if breakOnFirst and accumulator.hasVal():
-            return
-
-        winText = GetWindowText(hwnd)
-        # Skip all blank windows, gotta go fast
-        if winText == "":
-            return
-
-        if useComp(keyword, winText) and not any(
-            [True for ig in ignore if str(ig) in winText]
-        ):
-            accumulator.setVal(getWindowAsObject(hwnd, windowText=winText))
-            return
-
-    EnumWindows(enumProc, accumulator)
-    return accumulator.val  # Return the values we got from the State
 
 
 def tryAttachThread(thisThread: int, willBeAttachedToThisThread: int):
