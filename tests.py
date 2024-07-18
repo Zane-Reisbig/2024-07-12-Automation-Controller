@@ -10,13 +10,18 @@ from lib.WindowHandler.managers import (
 )
 
 run_T_WindowHandlers = True
+WindowHandlers_timeSleepActions = 1
+WindowHandlers_timeCreateDestroy = 0.4
+
 run_T_WindowMessage = True
+WindowMessage_timeSleepActions = 1
+WindowMessage_timeCreateDestroy = 0.4
 
 
 @unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
 class T_WindowHandlers(unittest.TestCase):
-    timeSleep = 1
-    timeWindowCreateDestroy = 0.4
+    timeSleep = WindowHandlers_timeSleepActions
+    timeWindowCreateDestroy = WindowHandlers_timeCreateDestroy
 
     def createAndGetWindowRef(self, title: str, message: str = None):
         def showMessageBox(title: str, content: str = None):
@@ -94,8 +99,8 @@ class T_WindowHandlers(unittest.TestCase):
 
 @unittest.skipIf(not run_T_WindowMessage, "Not Testing")
 class T_WindowMessage(unittest.TestCase):
-    timeSleep = 1
-    timeWindowCreateDestroy = 0.4
+    timeSleep = WindowHandlers_timeSleepActions
+    timeWindowCreateDestroy = WindowHandlers_timeCreateDestroy
 
     def createAndGetWindowRef(self, title: str, message: str = None):
         def showMessageBox(title: str, content: str = None):
