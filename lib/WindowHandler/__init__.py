@@ -23,18 +23,18 @@ from pywintypes import error as pywinError
 T = TypeVar("T")
 type WIN32_MESSAGE = int
 
-from dataclasses import dataclass, field
-from win32api import OpenProcess, CloseHandle, GetLastError, FormatMessage
+from dataclasses import dataclass, field, fields
+from win32api import OpenProcess, CloseHandle
 from win32gui import (
     GetWindowText,
     GetForegroundWindow,
-    EnumWindows,
+    EnumWindows,  # used in managers
     SetForegroundWindow,
     ShowWindow,
-    SendMessageTimeout,
     SendMessage,
     PostMessage,
-    PeekMessage,
+    GetWindowRect,
+    SetWindowPos,
 )
 from win32process import (
     GetWindowThreadProcessId,
@@ -72,6 +72,29 @@ class State:
         self.val = to
 
 
+@dataclass
+class Point:
+    x: int
+    y: int
+
+
+@dataclass
+class Rect:
+    # fmt: off
+    left   : int = field(default=-1)
+    top    : int = field(default=-1)
+    right  : int = field(default=-1)
+    bottom : int = field(default=-1)
+    # fmt: on
+
+    def toPoint(self):
+        raise NotImplementedError("TODO")
+
+    def __iter__(self):
+        for field in fields(self):
+            yield getattr(self, field.name)
+
+
 # I like C#'s String.Empty class member a lot
 class EmptyString(str):
     def __str__(self) -> str:
@@ -85,6 +108,7 @@ class Window:
     processID: int
     windowTitle: str = field(default_factory=str)
     exePath: str = field(default_factory=str)
+    windowRect: Rect = None
 
     class HandleManager:
         def __init__(self, windowObject) -> None:
@@ -123,16 +147,44 @@ class Window:
         if self.windowTitle == "":
             self.windowTitle = EmptyString
 
-    def tryActivate(self, tryThreadAttach=True, withMinimize: bool = True) -> bool:
-        foreGroundWindow = getForegroundWindowAsObject()
+        self.windowRect = Rect(*GetWindowRect(self.hwnd))
+        print()
+
+    # TODO: figure out why the hell the rect value is reseting
+    def __set_window_to_original_pos__(self):
+        w = self.windowRect.left - self.windowRect.right
+        h = self.windowRect.bottom - self.windowRect.top
+        SetWindowPos(
+            self.hwnd,
+            0,
+            self.windowRect.left,
+            self.windowRect.top,
+            w,
+            h,
+            0,
+        )
+
+    def tryActivate(
+        self,
+        tryThreadAttach=True,
+        withMinimize: bool = True,
+        userVerify: Callable[["Window"], bool] = None,
+        **kwargs,
+    ):
+        "kwarg: retryLimit"
+
+        # TODO: Happens on return here
+        foregroundWindow = getForegroundWindowAsObject()
+
         if tryThreadAttach:
-            tryAttachThread(foreGroundWindow.threadID, self.threadID)
+            tryAttachThread(foregroundWindow.threadID, self.threadID)
 
         try:
             # By min and max-ing we make sure it truly is on the foreground
             if withMinimize:
                 ShowWindow(self.hwnd, SW_MINIMIZE)  # 6 minimize
                 ShowWindow(self.hwnd, SW_MAXIMIZE)  # 3 maximize
+                self.__set_window_to_original_pos__()
 
             SetForegroundWindow(self.hwnd)
         except pywinError as e:
@@ -141,7 +193,17 @@ class Window:
             __pywinIsError__(e, ShowWindow)
             return False
 
-        return True
+        # Sometime it takes just a little longer than it should to raise the window
+        # so we do this a little
+        for _ in range(kwargs.get("retryLimit", 5)):
+            if self.isForeground():
+                break
+
+        if userVerify != None:
+            return userVerify(getForegroundWindowAsObject())
+
+        # Unreachable code my ass I'm stepped into it typing this
+        return self.isForeground()
 
     def isForeground(self):
         foreGround = getForegroundWindowAsObject()
@@ -214,11 +276,6 @@ def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int 
             raise NotImplementedError(f"Unknown option 'behavior={behavior}'")
 
     return
-
-
-def log_error(func_name, error_code):
-    x = f"Error in {func_name}: {error_code} - {FormatMessage(error_code)}"
-    print(x)
 
 
 def getForegroundWindowAsObject():

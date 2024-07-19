@@ -1,6 +1,33 @@
 from . import *
 
 
+def doesWindowExistIsItForeground(
+    windowKeyword: str, ignore: list | str = None, trySetForegroundIfNot=True, **kwargs
+):
+    """
+    kwargs:
+        exact: bool
+        withMinimize: bool = False
+    """
+    hasWindow, isForeground = False, False
+    this_searchForWindow = lambda: searchForWindowByTitle(
+        windowKeyword, ignore, kwargs.get("exact", None)
+    )
+
+    doesWindowExist = this_searchForWindow()
+    if not doesWindowExist:
+        return (hasWindow, isForeground)
+
+    hasWindow = True
+
+    if trySetForegroundIfNot and not doesWindowExist.isForeground():
+        doesWindowExist.tryActivate(withMinimize=kwargs.get("withMinimize", False))
+
+    isForeground = doesWindowExist.isForeground()
+
+    return (hasWindow, isForeground)
+
+
 def searchForWindowsByTitle(
     keyword: str, ignore: list | str = None, exact: bool = False
 ) -> list[Window]:
