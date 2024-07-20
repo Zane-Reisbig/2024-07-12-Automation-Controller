@@ -1,5 +1,15 @@
 from . import *
 
+from threading import Thread
+from time import sleep
+
+QUICK_EVENT_TRY_MAX_ITERATIONS = 2
+QUICK_EVENT_RETRY_TIME = 0.2
+
+# EVENT_TRY_MAX_ITERATIONS: 1.38 hours if it ran all the way
+EVENT_TRY_MAX_ITERATIONS = 9999
+EVENT_RETRY_TIME = 0.5
+
 
 def doesWindowExistIsItForeground(
     windowKeyword: str, ignore: list | str = None, trySetForegroundIfNot=True, **kwargs
@@ -26,6 +36,64 @@ def doesWindowExistIsItForeground(
     isForeground = doesWindowExist.isForeground()
 
     return (hasWindow, isForeground)
+
+
+def watchWindow(windowSearchArgs: list, time: int, maxIter: int):
+    haveWindow = None
+
+    for _ in range(maxIter):
+        haveWindow = searchForWindowByTitle(*windowSearchArgs)
+
+        if haveWindow:
+            break
+
+        sleep(time)
+
+    return haveWindow
+
+
+def event_foreGroundWindowChanged(callback: Callable[[Window], None]):
+    def createEvent():
+        currentForeground = getForegroundWindowAsObject()
+
+        for _ in range(EVENT_TRY_MAX_ITERATIONS):
+            curFore = getForegroundWindowAsObject()
+            if currentForeground != curFore:
+                break
+
+            sleep(EVENT_RETRY_TIME)
+
+        callback(curFore)
+
+    threadHandle = Thread(target=createEvent)
+    threadHandle.start()
+    return threadHandle
+
+
+def event_windowCreated(
+    windowSearchArgs: list,
+    callback: Callable[[Window], None],
+):
+    def createEvent():
+        haveWindow = None
+
+        haveWindow = watchWindow(
+            windowSearchArgs, QUICK_EVENT_RETRY_TIME, QUICK_EVENT_TRY_MAX_ITERATIONS
+        )
+        if haveWindow:
+            callback(haveWindow)
+            return
+
+        haveWindow = watchWindow(
+            windowSearchArgs, EVENT_RETRY_TIME, EVENT_TRY_MAX_ITERATIONS
+        )
+
+        callback(haveWindow)
+        return
+
+    threadHandle = Thread(target=createEvent)
+    threadHandle.start()
+    return threadHandle
 
 
 def searchForWindowsByTitle(

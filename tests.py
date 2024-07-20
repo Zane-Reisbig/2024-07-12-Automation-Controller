@@ -4,11 +4,14 @@ import unittest
 
 from threading import Thread
 from tkinter.messagebox import showinfo
+from lib.WindowHandler import Window
 from lib.WindowHandler.managers import (
+    event_windowCreated,
     searchForWindowByTitle,
     getForegroundWindowAsObject,
     doesWindowExistIsItForeground,
     Rect,
+    State,
 )
 
 run_T_WindowHandlers = False
@@ -23,9 +26,13 @@ run_T_WindowManager = False
 WindowManager_timeSleepActions = 1
 WindowManager_timeCreateDestroy = 0.4
 
-run_T_WindowPosition = True
+run_T_WindowPosition = False
 WindowPosition_timeSleepActions = 1
 WindowPosition_timeCreateDestroy = 0.4
+
+run_T_EventsTest = True
+EventsTest_timeSleepActions = 1
+EventsTest_timeCreateDestroy = 0.4
 
 
 @unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
@@ -214,6 +221,42 @@ class T_WindowPostionTests(unittest.TestCase):
         curPos = Rect(*GetWindowRect(first.hwnd))
 
         self.assertEqual(originalPos, curPos)
+
+
+@unittest.skipIf(not run_T_EventsTest, "Skipped")
+class T_EventsTest(unittest.TestCase):
+    timeSleep = EventsTest_timeSleepActions
+    timeWindowCreateDestroy = EventsTest_timeCreateDestroy
+
+    def createAndGetWindowRef(self, title: str, message: str = None):
+        def showMessageBox(title: str, content: str = None):
+            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
+            time.sleep(self.timeWindowCreateDestroy)
+            return title
+
+        return searchForWindowByTitle(showMessageBox(title, message))
+
+    def test_windowCreatedEventTest(self):
+        haveWindow = State()
+
+        def doAssert():
+            self.assertIsNotNone(haveWindow)
+            self.assertEqual(type(haveWindow.val), Window)
+
+        def whenHaveWindow(window: Window):
+            haveWindow.setVal(window)
+            doAssert()
+
+        windowTitle = "first"
+
+        thread = event_windowCreated(
+            (windowTitle,), lambda window: whenHaveWindow(window)
+        )
+
+        first = self.createAndGetWindowRef(windowTitle, "this is a message")
+
+        first.tryDestroy()
+        thread.join()
 
 
 os.system("cls")

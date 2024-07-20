@@ -61,6 +61,9 @@ class State:
         self.val = inital
         self.setHandler = setHandler
 
+    def __eq__(self, value: object) -> bool:
+        return self.val == value
+
     def hasVal(self):
         return None != self.val
 
@@ -81,10 +84,10 @@ class Point:
 @dataclass
 class Rect:
     # fmt: off
-    left   : int = field(default=-1)
-    top    : int = field(default=-1)
-    right  : int = field(default=-1)
-    bottom : int = field(default=-1)
+    left   : int = -1
+    top    : int = -1
+    right  : int = -1
+    bottom : int = -1
     # fmt: on
 
     def toPoint(self):
@@ -108,7 +111,7 @@ class Window:
     processID: int
     windowTitle: str = field(default_factory=str)
     exePath: str = field(default_factory=str)
-    windowRect: Rect = None
+    windowRect: Rect = field(default_factory=Rect)
 
     class HandleManager:
         def __init__(self, windowObject) -> None:
@@ -148,7 +151,9 @@ class Window:
             self.windowTitle = EmptyString
 
         self.windowRect = Rect(*GetWindowRect(self.hwnd))
-        print()
+
+    def __eq__(self, value: object) -> bool:
+        return (self.windowTitle, self.hwnd) == value
 
     # TODO: figure out why the hell the rect value is reseting
     def __set_window_to_original_pos__(self):
@@ -167,7 +172,8 @@ class Window:
     def tryActivate(
         self,
         tryThreadAttach=True,
-        withMinimize: bool = True,
+        # TODO: Flip this when rect resize issue is fixed
+        withMinimize: bool = False,
         userVerify: Callable[["Window"], bool] = None,
         **kwargs,
     ):
