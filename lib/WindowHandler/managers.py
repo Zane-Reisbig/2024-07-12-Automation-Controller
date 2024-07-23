@@ -72,14 +72,17 @@ def event_foreGroundWindowChanged(callback: Callable[[Window], None]):
 
 def event_windowCreated(
     callback: Callable[[Window], None],
+    windowSearchKwargs: dict,
     *windowSearchArgs: list,
-    **windowSearchKwargs: dict,
 ):
     haveWindow = State(None)
 
     def eventTick():
         haveWindow.setVal(
-            searchForWindowByTitle(*windowSearchArgs, **windowSearchKwargs)
+            searchForWindowByTitle(
+                *windowSearchArgs,
+                **windowSearchKwargs,
+            )
         )
         if haveWindow.val != None:
             callback(haveWindow.val)
