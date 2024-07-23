@@ -148,7 +148,7 @@ class Window:
     processID: int
     windowTitle: str = field(default_factory=str)
     exePath: str = field(default_factory=str)
-    windowRect: Rect = field(default_factory=Rect)
+    windowRect: Rect = None
 
     class HandleManager:
         def __init__(self, windowObject) -> None:
@@ -177,10 +177,8 @@ class Window:
             self.exePath = GetModuleFileNameEx(_handle, 0)
             CloseHandle(_handle)
 
-        if self.windowTitle:
-            return
-
-        self.windowTitle = GetWindowText(self.hwnd)
+        if not self.windowTitle:
+            self.windowTitle = GetWindowText(self.hwnd)
 
         # If we set it to an EmptyString object, when we search our ignore
         #   list for the EmptyString and we can be sure it won't match
@@ -192,15 +190,14 @@ class Window:
     def __eq__(self, value: object) -> bool:
         return (self.windowTitle, self.hwnd) == value
 
-    # TODO: figure out why the hell the rect value is reseting
     def __set_window_to_original_pos__(self):
-        w = self.windowRect.left - self.windowRect.right
+        w = self.windowRect.right - self.windowRect.left
         h = self.windowRect.bottom - self.windowRect.top
+
         SetWindowPos(
             self.hwnd,
             0,
-            self.windowRect.left,
-            self.windowRect.top,
+            *list(self.windowRect)[:-2],
             w,
             h,
             0,

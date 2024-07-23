@@ -20,11 +20,12 @@ from lib.WindowHandler.managers import (
 )
 
 # fmt: off
-run_T_WindowHandlers = True
-run_T_WindowMessage  = True
-run_T_WindowManager  = True
-run_T_WindowPosition = True
-run_T_EventsTest     = True
+doAll = True
+run_T_WindowHandlers = doAll if doAll else False
+run_T_WindowMessage  = doAll if doAll else False
+run_T_WindowManager  = doAll if doAll else False
+run_T_WindowPosition = doAll if doAll else False
+run_T_EventsTest     = doAll if doAll else False
 # fmt: on
 
 actionWaitTime = 0.2
