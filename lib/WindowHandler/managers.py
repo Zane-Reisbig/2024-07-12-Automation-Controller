@@ -20,11 +20,11 @@ def doesWindowExistIsItForeground(
         withMinimize: bool = False
     """
     hasWindow, isForeground = False, False
-    this_searchForWindow = lambda: searchForWindowByTitle(
+    thisSearchForWindow = lambda: searchForWindowByTitle(
         windowKeyword, ignore, kwargs.get("exact", None)
     )
 
-    doesWindowExist = this_searchForWindow()
+    doesWindowExist = thisSearchForWindow()
     if not doesWindowExist:
         return (hasWindow, isForeground)
 
@@ -71,29 +71,25 @@ def event_foreGroundWindowChanged(callback: Callable[[Window], None]):
 
 
 def event_windowCreated(
-    windowSearchArgs: list,
     callback: Callable[[Window], None],
+    *windowSearchArgs: list,
+    **windowSearchKwargs: dict,
 ):
-    def createEvent():
-        haveWindow = None
+    haveWindow = State(None)
 
-        haveWindow = watchWindow(
-            windowSearchArgs, QUICK_EVENT_RETRY_TIME, QUICK_EVENT_TRY_MAX_ITERATIONS
+    def eventTick():
+        haveWindow.setVal(
+            searchForWindowByTitle(*windowSearchArgs, **windowSearchKwargs)
         )
-        if haveWindow:
-            callback(haveWindow)
+        if haveWindow.val != None:
+            callback(haveWindow.val)
             return
 
-        haveWindow = watchWindow(
-            windowSearchArgs, EVENT_RETRY_TIME, EVENT_TRY_MAX_ITERATIONS
-        )
+        sleep(EVENT_RETRY_TIME)
 
-        callback(haveWindow)
-        return
-
-    threadHandle = Thread(target=createEvent)
-    threadHandle.start()
-    return threadHandle
+    ret = EventLoop(eventTick, lambda: haveWindow.val != None)
+    ret.start()
+    return ret
 
 
 def searchForWindowsByTitle(
@@ -136,6 +132,9 @@ def __EnumWindows__(
         ignore = [
             ignore,
         ]
+
+    if type(keyword) == dict:
+        keyword = keyword.get("keyword")
 
     exactComp = lambda this, that: this == that  #
     fuzzyComp = lambda this, that: this in that  # I was proud to come up with this

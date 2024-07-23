@@ -1,9 +1,14 @@
 import os
+import sys
 import time
 import unittest
+import logging
 
-from threading import Thread
+from win32con import WM_SETTEXT
+
+from threading import Thread, Lock
 from tkinter.messagebox import showinfo
+from uuid import uuid1
 from lib.WindowHandler import Window
 from lib.WindowHandler.managers import (
     event_windowCreated,
@@ -14,45 +19,34 @@ from lib.WindowHandler.managers import (
     State,
 )
 
-run_T_WindowHandlers = False
-WindowHandlers_timeSleepActions = 1
-WindowHandlers_timeCreateDestroy = 0.4
+# fmt: off
+run_T_WindowHandlers = True
+run_T_WindowMessage  = True
+run_T_WindowManager  = True
+run_T_WindowPosition = True
+run_T_EventsTest     = True
+# fmt: on
 
-run_T_WindowMessage = False
-WindowMessage_timeSleepActions = 1
-WindowMessage_timeCreateDestroy = 0.4
+actionWaitTime = 0.2
+windowCreateDestroyTime = 0.4
 
-run_T_WindowManager = False
-WindowManager_timeSleepActions = 1
-WindowManager_timeCreateDestroy = 0.4
 
-run_T_WindowPosition = False
-WindowPosition_timeSleepActions = 1
-WindowPosition_timeCreateDestroy = 0.4
+def createAndGetWindowRef(title: str, message: str = None):
+    def showMessageBox(title: str, content: str = None):
+        Thread(target=lambda: showinfo(title, content or "Hello World")).start()
+        time.sleep(windowCreateDestroyTime)
+        return title
 
-run_T_EventsTest = True
-EventsTest_timeSleepActions = 1
-EventsTest_timeCreateDestroy = 0.4
+    return searchForWindowByTitle(showMessageBox(title, message))
 
 
 @unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
 class T_WindowHandlers(unittest.TestCase):
-    timeSleep = WindowHandlers_timeSleepActions
-    timeWindowCreateDestroy = WindowHandlers_timeCreateDestroy
-
-    def createAndGetWindowRef(self, title: str, message: str = None):
-        def showMessageBox(title: str, content: str = None):
-            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(self.timeWindowCreateDestroy)
-            return title
-
-        return searchForWindowByTitle(showMessageBox(title, message))
 
     def test_canCloseWindow(self):
         windowTitle = "Test Window"
-        windowRef = self.createAndGetWindowRef(windowTitle)
-
-        time.sleep(self.timeSleep)
+        windowRef = createAndGetWindowRef(windowTitle)
+        time.sleep(windowCreateDestroyTime)
 
         self.assertIsNotNone(windowRef)
         self.assertEqual(
@@ -62,16 +56,15 @@ class T_WindowHandlers(unittest.TestCase):
         )
 
         windowRef.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(windowCreateDestroyTime)
 
         windowRef = searchForWindowByTitle(windowTitle)
         self.assertIsNone(windowRef)
 
     def test_canGetWindowReference(self):
         windowTitle = "Get this Window Ref"
-        windowRef = self.createAndGetWindowRef(windowTitle)
-
-        time.sleep(self.timeSleep)
+        windowRef = createAndGetWindowRef(windowTitle)
+        time.sleep(windowCreateDestroyTime)
 
         self.assertIsNotNone(windowRef)
         self.assertEqual(
@@ -81,34 +74,32 @@ class T_WindowHandlers(unittest.TestCase):
         )
 
         windowRef.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(windowCreateDestroyTime)
 
     def test_canSwitchWindow(self):
         firstWindowTitle = "First"
-        firstWindow = self.createAndGetWindowRef(firstWindowTitle)
-
-        time.sleep(self.timeSleep)
+        firstWindow = createAndGetWindowRef(firstWindowTitle)
+        time.sleep(windowCreateDestroyTime)
 
         secondWindowTitle = "Second"
-        secondWindow = self.createAndGetWindowRef(secondWindowTitle)
-
-        time.sleep(self.timeSleep)
+        secondWindow = createAndGetWindowRef(secondWindowTitle)
+        time.sleep(windowCreateDestroyTime)
 
         firstWindow.tryActivate(withMinimize=False)
         self.assertEqual(getForegroundWindowAsObject().windowTitle, firstWindowTitle)
 
-        time.sleep(self.timeSleep)
+        time.sleep(actionWaitTime)
 
         secondWindow.tryActivate(withMinimize=False)
         self.assertEqual(getForegroundWindowAsObject().windowTitle, secondWindowTitle)
 
-        time.sleep(self.timeSleep)
+        time.sleep(actionWaitTime)
 
         firstWindow.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(actionWaitTime)
 
         secondWindow.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(actionWaitTime)
 
         self.assertIsNone(searchForWindowByTitle(firstWindowTitle))
         self.assertIsNone(searchForWindowByTitle(secondWindowTitle))
@@ -116,61 +107,43 @@ class T_WindowHandlers(unittest.TestCase):
 
 @unittest.skipIf(not run_T_WindowMessage, "Not Testing")
 class T_WindowMessage(unittest.TestCase):
-    timeSleep = WindowHandlers_timeSleepActions
-    timeWindowCreateDestroy = WindowHandlers_timeCreateDestroy
-
-    def createAndGetWindowRef(self, title: str, message: str = None):
-        def showMessageBox(title: str, content: str = None):
-            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(self.timeWindowCreateDestroy)
-            return title
-
-        return searchForWindowByTitle(showMessageBox(title, message))
 
     def test_canSendWindowMessage(self):
         # fmt: off
-        from win32con import WM_SETTEXT 
         # fmt: on
 
         # this case checks with the WM_SETTEXT and the getWindowTextFunction
-        first = self.createAndGetWindowRef("Window!!", "This is a window!")
+        first = createAndGetWindowRef("Window!!", "This is a window!")
         newText = "This is the new Window Text"
+        time.sleep(windowCreateDestroyTime)
 
         first.sendWindowMessage(
             WM_SETTEXT,
             lParam=newText,
         )
+        time.sleep(actionWaitTime)
 
         first.tryActivate(withMinimize=False)
+        time.sleep(actionWaitTime)
 
         newWindow = searchForWindowByTitle(newText)
         self.assertIsNotNone(newWindow)
 
         newWindow.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
         self.assertIsNone(searchForWindowByTitle(first.windowTitle))
 
 
 @unittest.skipIf(not run_T_WindowManager, "Not Testing")
 class T_WindowManagerTests(unittest.TestCase):
 
-    timeSleep = WindowManager_timeSleepActions
-    timeWindowCreateDestroy = WindowManager_timeCreateDestroy
-
-    def createAndGetWindowRef(self, title: str, message: str = None):
-        def showMessageBox(title: str, content: str = None):
-            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(self.timeWindowCreateDestroy)
-            return title
-
-        return searchForWindowByTitle(showMessageBox(title, message))
-
     def test_doesWindowExistIsItForeground(self):
-        first = self.createAndGetWindowRef("this is a window")
-        second = self.createAndGetWindowRef("this is the current window")
-        time.sleep(self.timeWindowCreateDestroy)
+        first = createAndGetWindowRef("this is a window")
+        second = createAndGetWindowRef("this is the current window")
+        time.sleep(windowCreateDestroyTime)
 
         second.tryActivate(withMinimize=False)
-        time.sleep(self.timeSleep)
+        time.sleep(actionWaitTime)
 
         self.assertEqual(getForegroundWindowAsObject().windowTitle, second.windowTitle)
 
@@ -181,82 +154,96 @@ class T_WindowManagerTests(unittest.TestCase):
         #                                  ^     ^
         #                            isAlive     isForeground
 
-        time.sleep(self.timeSleep)
+        time.sleep(actionWaitTime)
         isWindowAlive = doesWindowExistIsItForeground(first.windowTitle)
         self.assertEqual(isWindowAlive, (True, True))
         #                                  ^     ^
         #                            isAlive     isForeground
 
         first.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(windowCreateDestroyTime)
         self.assertIsNone(searchForWindowByTitle(first.windowTitle))
 
         second.tryDestroy()
-        time.sleep(self.timeWindowCreateDestroy)
+        time.sleep(windowCreateDestroyTime)
         self.assertIsNone(searchForWindowByTitle(second.windowTitle))
 
 
 @unittest.skipIf(not run_T_WindowPosition, "Skipped")
 class T_WindowPostionTests(unittest.TestCase):
-    timeSleep = WindowPosition_timeSleepActions
-    timeWindowCreateDestroy = WindowPosition_timeCreateDestroy
-
-    def createAndGetWindowRef(self, title: str, message: str = None):
-        def showMessageBox(title: str, content: str = None):
-            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(self.timeWindowCreateDestroy)
-            return title
-
-        return searchForWindowByTitle(showMessageBox(title, message))
 
     def test_doesWindowGoBackToCorrectPosition(self):
         from win32gui import GetWindowRect
 
-        first = self.createAndGetWindowRef("first")
-        time.sleep(self.timeWindowCreateDestroy)
+        first = createAndGetWindowRef("first")
+        time.sleep(windowCreateDestroyTime)
         originalPos = Rect(*GetWindowRect(first.hwnd))
 
-        first.tryActivate()
-        time.sleep(self.timeSleep)
+        first.tryActivate(withMinimize=True)
+        time.sleep(actionWaitTime)
         curPos = Rect(*GetWindowRect(first.hwnd))
 
         self.assertEqual(originalPos, curPos)
 
+        first.tryDestroy()
+
 
 @unittest.skipIf(not run_T_EventsTest, "Skipped")
 class T_EventsTest(unittest.TestCase):
-    timeSleep = EventsTest_timeSleepActions
-    timeWindowCreateDestroy = EventsTest_timeCreateDestroy
 
-    def createAndGetWindowRef(self, title: str, message: str = None):
-        def showMessageBox(title: str, content: str = None):
-            Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-            time.sleep(self.timeWindowCreateDestroy)
-            return title
+    def test_spinlockORthreadWaitTest(self):
+        win = State(None)
+        testWindowName = f"Window: {uuid1()}"
 
-        return searchForWindowByTitle(showMessageBox(title, message))
+        def handleWindow(window: Window):
+            win.setVal(window)
 
-    def test_windowCreatedEventTest(self):
-        haveWindow = State()
+        thread = event_windowCreated(handleWindow, {"keyword": testWindowName})
+        testWindow = createAndGetWindowRef(testWindowName, "This is the message")
 
-        def doAssert():
-            self.assertIsNotNone(haveWindow)
-            self.assertEqual(type(haveWindow.val), Window)
+        while win.val == None:
+            time.sleep(1)
 
-        def whenHaveWindow(window: Window):
-            haveWindow.setVal(window)
-            doAssert()
+        self.assertIsNotNone(win.val)
+        self.assertTrue(thread.isStopped, "Thread stopped")
 
-        windowTitle = "first"
+        testWindow.tryDestroy()
+        self.assertIsNone(searchForWindowByTitle(testWindowName))
 
-        thread = event_windowCreated(
-            (windowTitle,), lambda window: whenHaveWindow(window)
-        )
+    def test_eventChain(self):
+        state = State(False)
+        windowName = f"Window: {uuid1()}"
 
-        first = self.createAndGetWindowRef(windowTitle, "this is a message")
+        def eventZero(window):
+            self.assertEqual(windowName, window.windowTitle)
+            eventZero_chainZero(window)
 
-        first.tryDestroy()
-        thread.join()
+        def eventZero_chainZero(window):
+            self.assertEqual(windowName, window.windowTitle)
+            chainZero_chainZero(window)
+
+        def chainZero_chainZero(window):
+            self.assertEqual(windowName, window.windowTitle)
+            chainZero_chainOne(window)
+
+        def chainZero_chainOne(window):
+            state.setVal(True)
+            self.assertEqual(windowName, window.windowTitle)
+
+        thread = event_windowCreated(eventZero, {"keyword": windowName})
+
+        win = createAndGetWindowRef(windowName, "Message!")
+
+        while False == state.val:
+            time.sleep(1)
+
+        self.assertTrue(state.val)
+
+        self.assertIsNotNone(searchForWindowByTitle(windowName))
+        self.assertTrue(thread.isStopped, "Thread stopped")
+
+        win.tryDestroy()
+        self.assertIsNone(searchForWindowByTitle(windowName))
 
 
 os.system("cls")

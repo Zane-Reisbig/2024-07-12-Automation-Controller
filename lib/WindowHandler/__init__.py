@@ -1,4 +1,6 @@
 # fmt: off
+import os
+from time import sleep
 from win32con import (
     # Security Options
     PROCESS_QUERY_INFORMATION,
@@ -17,13 +19,21 @@ from win32con import (
 HANDLE_ERROR_DESTRUCTIVE = 1
 HANDLE_ERROR_STD_OUTPUT = 2
 
-from typing import Callable, Any, TypeVar
+from typing import Callable, Any, Iterable, Mapping, TypeVar
 from pywintypes import error as pywinError
 
 T = TypeVar("T")
 type WIN32_MESSAGE = int
 
+
+class ThreadKill(Exception):
+    def __init__(self, message: str, *args: object) -> None:
+        super().__init__(message, *args)
+
+
 from dataclasses import dataclass, field, fields
+from threading import Thread, Event
+
 from win32api import OpenProcess, CloseHandle
 from win32gui import (
     GetWindowText,
@@ -41,6 +51,33 @@ from win32process import (
     AttachThreadInput,
     GetModuleFileNameEx,
 )
+
+
+class EventLoop(Thread):
+    def __init__(
+        self,
+        tick: Callable[[], None],
+        stopCheck: Callable[[], bool],
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.stopCheck = stopCheck
+        self.tick = tick
+
+        self.stopFlag = Event()
+        self.isStopped = self.stopFlag.is_set
+
+    def stop(self):
+        if self.stopFlag.is_set():
+            return
+
+        self.stopFlag.set()
+        self.join()
+
+    def run(self):
+        while self.stopFlag.is_set() == False and self.stopCheck() == False:
+            self.tick()
 
 
 class State:
@@ -65,7 +102,7 @@ class State:
         return self.val == value
 
     def hasVal(self):
-        return None != self.val
+        return self.val or None
 
     def setVal(self, to):
         if self.setHandler:
@@ -208,7 +245,7 @@ class Window:
         if userVerify != None:
             return userVerify(getForegroundWindowAsObject())
 
-        # Unreachable code my ass I'm stepped into it typing this
+        # Unreachable code my ass, I'm stepped into it typing this
         return self.isForeground()
 
     def isForeground(self):
@@ -270,7 +307,9 @@ class Window:
             return isError
 
 
-def __pywinIsError__(_pywinError: pywinError, function: Callable, behavior: int = 0):
+def __pywinIsError__(
+    _pywinError: pywinError, function: Callable, behavior: int = HANDLE_ERROR_STD_OUTPUT
+):
     # Get the Literal Name of the callable and see if that's our error
     if _pywinError.funcname != function.__name__:
         if behavior == HANDLE_ERROR_DESTRUCTIVE:
