@@ -31,7 +31,7 @@ def doesWindowExistIsItForeground(
     hasWindow = True
 
     if trySetForegroundIfNot and not doesWindowExist.isForeground():
-        doesWindowExist.tryActivate(withMinimize=kwargs.get("withMinimize", False))
+        doesWindowExist.tryActivate(withMinimize=kwargs.get("withMinimize", True))
 
     isForeground = doesWindowExist.isForeground()
 
@@ -52,20 +52,21 @@ def watchWindow(windowSearchArgs: list, time: int, maxIter: int):
     return haveWindow
 
 
-def event_foreGroundWindowChanged(callback: Callable[[Window], None]):
-    def createEvent():
-        currentForeground = getForegroundWindowAsObject()
+def event_foregroundWindowChanged(
+    callback: Callable[[Window], None], timeout: int = 10
+):
+    curForeground = State(getForegroundWindowAsObject())
 
-        for _ in range(EVENT_TRY_MAX_ITERATIONS):
-            curFore = getForegroundWindowAsObject()
-            if currentForeground != curFore:
-                break
+    def eventTick():
+        newCurFore = getForegroundWindowAsObject()
 
-            sleep(EVENT_RETRY_TIME)
+        if newCurFore != curForeground.val:
+            callback(newCurFore)
+            return
 
-        callback(curFore)
+        sleep(EVENT_RETRY_TIME)
 
-    threadHandle = Thread(target=createEvent)
+    threadHandle = EventLoop(eventTick, timeoutSeconds=timeout)
     threadHandle.start()
     return threadHandle
 
@@ -73,7 +74,7 @@ def event_foreGroundWindowChanged(callback: Callable[[Window], None]):
 def event_windowCreated(
     callback: Callable[[Window], None],
     windowSearchKwargs: dict,
-    *windowSearchArgs: list,
+    windowSearchArgs: list = [],
 ):
     haveWindow = State(None)
 
@@ -126,6 +127,8 @@ def __EnumWindows__(
     exact: bool = False,
     breakOnFirst: bool = False,
 ) -> Window | list[Window]:
+    if keyword == "":
+        return None
 
     # If the window text contains __EMPTY_STRING__ something crazy is going on and thats on you
     if not ignore:
@@ -136,6 +139,7 @@ def __EnumWindows__(
             ignore,
         ]
 
+    # Sometimes the kwargs don't get destructored I haven't been able to figure out why tho
     if type(keyword) == dict:
         keyword = keyword.get("keyword")
 

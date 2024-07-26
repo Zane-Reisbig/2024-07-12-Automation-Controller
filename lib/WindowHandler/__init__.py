@@ -1,6 +1,6 @@
 # fmt: off
 import os
-from time import sleep
+from datetime import datetime, timedelta
 from win32con import (
     # Security Options
     PROCESS_QUERY_INFORMATION,
@@ -57,16 +57,31 @@ class EventLoop(Thread):
     def __init__(
         self,
         tick: Callable[[], None],
-        stopCheck: Callable[[], bool],
+        stopCheck: Callable[[], bool] = None,
+        timeoutSeconds: int = 10,
         *args,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
-        self.stopCheck = stopCheck
+        if stopCheck != None:
+            self.stopCheck = stopCheck
+        else:
+            self.stopCheck = lambda: False
+
         self.tick = tick
 
+        self.__stopAt__ = datetime.now() + timedelta(seconds=timeoutSeconds)
         self.stopFlag = Event()
         self.isStopped = self.stopFlag.is_set
+
+    def __stopCheck__(self):
+        return any(
+            [
+                self.stopCheck(),
+                datetime.now() >= self.__stopAt__,
+                self.stopFlag.is_set(),
+            ]
+        )
 
     def stop(self):
         if self.stopFlag.is_set():
@@ -76,7 +91,7 @@ class EventLoop(Thread):
         self.join()
 
     def run(self):
-        while self.stopFlag.is_set() == False and self.stopCheck() == False:
+        while self.__stopCheck__() == False:
             self.tick()
 
 
@@ -156,11 +171,15 @@ class Window:
             self.handle = None
 
         def __enter__(self):
-            self.handle = OpenProcess(
-                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                False,
-                self.windowObject.processID,
-            )
+            try:
+                self.handle = OpenProcess(
+                    PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                    False,
+                    self.windowObject.processID,
+                )
+            except pywinError as e:
+                __pywinIsError__(e, OpenProcess)
+                return None
 
             return self.handle
 
@@ -173,9 +192,11 @@ class Window:
         #   I'll let you know where the door is.
         #
         # Whoever decided they are different things is not welcome here
-        with self.getHandle() as _handle:
-            self.exePath = GetModuleFileNameEx(_handle, 0)
-            CloseHandle(_handle)
+        canGetHandle = self.getHandle()
+        if None != canGetHandle.handle:
+            with self.getHandle() as _handle:
+                self.exePath = GetModuleFileNameEx(_handle, 0)
+                CloseHandle(_handle)
 
         if not self.windowTitle:
             self.windowTitle = GetWindowText(self.hwnd)
@@ -185,7 +206,11 @@ class Window:
         if self.windowTitle == "":
             self.windowTitle = EmptyString
 
-        self.windowRect = Rect(*GetWindowRect(self.hwnd))
+        try:
+            self.windowRect = Rect(*GetWindowRect(self.hwnd))
+        except pywinError as e:
+            __pywinIsError__(e, GetWindowRect)
+            self.windowRect = Rect(None, None, None, None)
 
     def __eq__(self, value: object) -> bool:
         return (self.windowTitle, self.hwnd) == value
@@ -263,12 +288,7 @@ class Window:
         Disposes when outside of block
         """
 
-        try:
-            return self.HandleManager(self)
-        except pywinError as e:
-            __pywinIsError__(e, OpenProcess)
-
-        return False
+        return self.HandleManager(self)
 
     def tryDestroy(self):
         return self.sendWindowMessage(WM_CLOSE, tryWaitForMessageToProcess=False)

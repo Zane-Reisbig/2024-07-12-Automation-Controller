@@ -1,13 +1,12 @@
 import os
-import sys
 import time
 import unittest
-import logging
+import tkinter as tk
 
 from win32con import WM_SETTEXT
 
-from threading import Thread, Lock
-from tkinter.messagebox import showinfo
+from threading import Thread, Event
+
 from uuid import uuid1
 from lib.WindowHandler import Window
 from lib.WindowHandler.managers import (
@@ -17,6 +16,7 @@ from lib.WindowHandler.managers import (
     doesWindowExistIsItForeground,
     Rect,
     State,
+    pywinError,
 )
 
 # fmt: off
@@ -33,12 +33,21 @@ windowCreateDestroyTime = 0.4
 
 
 def createAndGetWindowRef(title: str, message: str = None):
-    def showMessageBox(title: str, content: str = None):
-        Thread(target=lambda: showinfo(title, content or "Hello World")).start()
-        time.sleep(windowCreateDestroyTime)
-        return title
+    ready = Event()
 
-    return searchForWindowByTitle(showMessageBox(title, message))
+    def createWindow():
+        root = tk.Tk()
+        root.title(title)
+        label = tk.Label(root, text=message, anchor="center")
+        label.pack()
+        ready.set()
+        root.mainloop()
+
+    Thread(target=createWindow).start()
+    ready.wait()
+    time.sleep(windowCreateDestroyTime)
+
+    return searchForWindowByTitle(title)
 
 
 @unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
@@ -86,12 +95,12 @@ class T_WindowHandlers(unittest.TestCase):
         secondWindow = createAndGetWindowRef(secondWindowTitle)
         time.sleep(windowCreateDestroyTime)
 
-        firstWindow.tryActivate(withMinimize=False)
+        firstWindow.tryActivate()
         self.assertEqual(getForegroundWindowAsObject().windowTitle, firstWindowTitle)
 
         time.sleep(actionWaitTime)
 
-        secondWindow.tryActivate(withMinimize=False)
+        secondWindow.tryActivate()
         self.assertEqual(getForegroundWindowAsObject().windowTitle, secondWindowTitle)
 
         time.sleep(actionWaitTime)
@@ -119,12 +128,11 @@ class T_WindowMessage(unittest.TestCase):
         time.sleep(windowCreateDestroyTime)
 
         first.sendWindowMessage(
-            WM_SETTEXT,
-            lParam=newText,
+            WM_SETTEXT, lParam=newText, tryWaitForMessageToProcess=True
         )
-        time.sleep(actionWaitTime)
+        time.sleep(windowCreateDestroyTime)
 
-        first.tryActivate(withMinimize=False)
+        first.tryActivate()
         time.sleep(actionWaitTime)
 
         newWindow = searchForWindowByTitle(newText)
@@ -140,10 +148,11 @@ class T_WindowManagerTests(unittest.TestCase):
 
     def test_doesWindowExistIsItForeground(self):
         first = createAndGetWindowRef("this is a window")
+        time.sleep(windowCreateDestroyTime)
         second = createAndGetWindowRef("this is the current window")
         time.sleep(windowCreateDestroyTime)
 
-        second.tryActivate(withMinimize=False)
+        second.tryActivate(withMinimize=True)
         time.sleep(actionWaitTime)
 
         self.assertEqual(getForegroundWindowAsObject().windowTitle, second.windowTitle)
@@ -176,17 +185,21 @@ class T_WindowPostionTests(unittest.TestCase):
     def test_doesWindowGoBackToCorrectPosition(self):
         from win32gui import GetWindowRect
 
-        first = createAndGetWindowRef("first")
+        windowName = "first"
+
+        first = createAndGetWindowRef(windowName)
         time.sleep(windowCreateDestroyTime)
         originalPos = Rect(*GetWindowRect(first.hwnd))
 
-        first.tryActivate(withMinimize=True)
+        first.tryActivate()
         time.sleep(actionWaitTime)
         curPos = Rect(*GetWindowRect(first.hwnd))
 
         self.assertEqual(originalPos, curPos)
 
         first.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
+        self.assertIsNone(searchForWindowByTitle(windowName))
 
 
 @unittest.skipIf(not run_T_EventsTest, "Skipped")
@@ -194,25 +207,28 @@ class T_EventsTest(unittest.TestCase):
 
     def test_spinlockORthreadWaitTest(self):
         win = State(None)
+        event = Event()
         testWindowName = f"Window: {uuid1()}"
 
         def handleWindow(window: Window):
             win.setVal(window)
+            event.set()
 
         thread = event_windowCreated(handleWindow, {"keyword": testWindowName})
         testWindow = createAndGetWindowRef(testWindowName, "This is the message")
 
-        while win.val == None:
-            time.sleep(1)
+        event.wait()
 
         self.assertIsNotNone(win.val)
         self.assertTrue(thread.isStopped, "Thread stopped")
 
         testWindow.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
         self.assertIsNone(searchForWindowByTitle(testWindowName))
 
     def test_eventChain(self):
         state = State(False)
+        event = Event()
         windowName = f"Window: {uuid1()}"
 
         def eventZero(window):
@@ -230,13 +246,13 @@ class T_EventsTest(unittest.TestCase):
         def chainZero_chainOne(window):
             state.setVal(True)
             self.assertEqual(windowName, window.windowTitle)
+            event.set()
 
         thread = event_windowCreated(eventZero, {"keyword": windowName})
 
         win = createAndGetWindowRef(windowName, "Message!")
 
-        while False == state.val:
-            time.sleep(1)
+        event.wait()
 
         self.assertTrue(state.val)
 
@@ -244,7 +260,102 @@ class T_EventsTest(unittest.TestCase):
         self.assertTrue(thread.isStopped, "Thread stopped")
 
         win.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
         self.assertIsNone(searchForWindowByTitle(windowName))
+
+    def test_timeout(self):
+        start = time.time()
+        thread = event_windowCreated(lambda window: None, {"keyword": "__EMPTY__"})
+
+        thread.join()
+        end = int(time.time() - start)
+
+        self.assertAlmostEqual(end, 10)
+
+
+@unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
+class T_SpecialWindowTitleHandlers(unittest.TestCase):
+
+    def test_windowWithSpecialCharactersInTitle(self):
+        specialTitle = "!@#$%^&*()_+|}{:?><,./;'[]\\=-`~"
+        windowRef = createAndGetWindowRef(specialTitle)
+        time.sleep(windowCreateDestroyTime)
+
+        self.assertIsNotNone(windowRef)
+        self.assertEqual(
+            specialTitle,
+            windowRef.windowTitle,
+            f"\t- {specialTitle} != {windowRef.windowTitle}\n",
+        )
+
+        windowRef.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
+
+        windowRef = searchForWindowByTitle(specialTitle)
+        self.assertIsNone(windowRef)
+
+
+@unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
+class T_ConcurrentWindowHandlers(unittest.TestCase):
+
+    def test_concurrentWindowCreation(self):
+        titles = ["Window 1", "Window 2", "Window 3"]
+        windowRefs = []
+
+        def create_window(title):
+            windowRef = createAndGetWindowRef(title)
+            self.assertIsNotNone(windowRef)
+            self.assertEqual(title, windowRef.windowTitle)
+            windowRefs.append(windowRef)
+
+        threads = [Thread(target=create_window, args=(title,)) for title in titles]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        time.sleep(windowCreateDestroyTime)
+
+        for windowRef in windowRefs:
+            windowRef.tryDestroy()
+            time.sleep(windowCreateDestroyTime)
+
+        for title in titles:
+            self.assertIsNone(searchForWindowByTitle(title))
+
+
+@unittest.skipIf(not run_T_WindowHandlers, "Not Testing")
+class T_InvalidHWNDHandlers(unittest.TestCase):
+
+    def test_invalidHWND(self):
+        invalidHWND = -1
+        with self.assertRaises(pywinError):
+            Window(invalidHWND, 0, 0)
+
+        # Ensure no window is created with an invalid HWND
+        self.assertIsNone(searchForWindowByTitle("Invalid HWND Window"))
+
+
+@unittest.skipIf(not run_T_WindowPosition, "Not Testing")
+class T_WindowPositionTests(unittest.TestCase):
+
+    def test_windowPosition(self):
+        from win32gui import GetWindowRect
+
+        windowTitle = "Position Test Window"
+        windowRef = createAndGetWindowRef(windowTitle)
+        time.sleep(windowCreateDestroyTime)
+        originalPos = Rect(*GetWindowRect(windowRef.hwnd))
+
+        windowRef.tryActivate(withMinimize=True)
+        time.sleep(actionWaitTime)
+        currentPos = Rect(*GetWindowRect(windowRef.hwnd))
+
+        self.assertEqual(originalPos, currentPos)
+
+        windowRef.tryDestroy()
+        time.sleep(windowCreateDestroyTime)
+        self.assertIsNone(searchForWindowByTitle(windowTitle))
 
 
 os.system("cls")
