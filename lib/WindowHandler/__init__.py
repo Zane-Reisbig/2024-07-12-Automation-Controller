@@ -73,12 +73,17 @@ class EventLoop(Thread):
         self.__stopAt__ = datetime.now() + timedelta(seconds=timeoutSeconds)
         self.stopFlag = Event()
         self.isStopped = self.stopFlag.is_set
+        self.didTimeout = False
 
     def __stopCheck__(self):
+        timeoutCheck = datetime.now() >= self.__stopAt__
+        if timeoutCheck:
+            self.didTimeout = True
+
         return any(
             [
                 self.stopCheck(),
-                datetime.now() >= self.__stopAt__,
+                timeoutCheck,
                 self.stopFlag.is_set(),
             ]
         )
